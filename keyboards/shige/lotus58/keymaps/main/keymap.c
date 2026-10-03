@@ -273,6 +273,24 @@ bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
     return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
+bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
+    (void)record;
+    return keycode == LT(3, KC_SPC);
+}
+
+uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
+    (void)record;
+    switch (keycode) {
+        case LCTL_T(KC_S):
+        case LSFT_T(KC_T):
+        case RSFT_T(KC_N):
+        case RCTL_T(KC_E):
+            return TAPPING_TERM - 70;
+        default:
+            return TAPPING_TERM;
+    }
+}
+
 static void render_luna(int LUNA_X, int LUNA_Y) {
     /* Sit */
     static const char PROGMEM sit[2][ANIM_SIZE] = {/* 'sit1', 32x22px */

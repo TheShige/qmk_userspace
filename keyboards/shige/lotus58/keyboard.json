@@ -34,8 +34,10 @@
     },
     "tapping": {
         "term": 250,
+        "term_per_key": true,
         "chordal_hold": true,
-        "permissive_hold": true
+        "permissive_hold": true,
+        "hold_on_other_key_press_per_key": true
     },
     "matrix_pins": {
         "cols": ["B1", "B2", "B3", "B6", "F7", "F6"],
