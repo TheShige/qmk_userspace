@@ -525,7 +525,7 @@ bool oled_task_user(void) {
     current_wpm   = get_current_wpm();
     led_usb_state = host_keyboard_led_state();
 
-    if (!is_keyboard_master()) {
+    if (!is_keyboard_left()) {
         if (!is_oled_enabled) {
             oled_off();
             return false;
@@ -567,6 +567,7 @@ void keyboard_post_init_user(void) {
 
 void housekeeping_task_user(void) {
     currentLayer = get_highest_layer(layer_state);
+    is_oled_enabled = (bool)(last_input_activity_elapsed() < 60000);
     if (is_keyboard_master()) {
         if (!isSynced) {
             if (transaction_rpc_send(USER_SYNC_A, sizeof(custom_sync_status), &custom_sync_status)) {
@@ -577,8 +578,6 @@ void housekeeping_task_user(void) {
                 custom_sync_status.isSneaking = false;
             }
         }
-    } else {
-        is_oled_enabled = (bool)(last_input_activity_elapsed() < 60000);
     }
 }
 
