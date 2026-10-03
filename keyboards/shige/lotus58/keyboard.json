@@ -6,9 +6,11 @@
     "development_board": "promicro",
     "bootloader_instructions": "Short marked pads on PCB, or hold top-outer key when plugging in each hand.",
     "build": {
+        "debounce_type": "asym_eager_defer_pk",
         "lto": true
     },
     "diode_direction": "COL2ROW",
+    "debounce": 10,
     "encoder": {
         "rotary": [
             {"pin_a": "F5", "pin_b": "F4", "resolution": 2}
@@ -29,6 +31,11 @@
         "default": {
             "nkro": true
         }
+    },
+    "tapping": {
+        "term": 250,
+        "chordal_hold": true,
+        "permissive_hold": true
     },
     "matrix_pins": {
         "cols": ["B1", "B2", "B3", "B6", "F7", "F6"],

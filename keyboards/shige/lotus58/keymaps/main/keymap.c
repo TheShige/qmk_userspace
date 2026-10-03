@@ -3,7 +3,6 @@
 
 #include QMK_KEYBOARD_H
 #include <stdlib.h>
-#include "features/achordion.h"
 #include "transactions.h"
 
 #define ____ KC_TRNS
@@ -33,8 +32,8 @@ int current_wpm = 0;
 led_t led_usb_state;
 sync_luna_status_t luna_status;
 
-int lastLayer = 0; // last layer before "SWITCH_COLEMAK" is pressed
 int currentLayer = 0; // current layer
+int lastLayer = 7; // last layer before "SWITCH_COLEMAK" is pressed; default set to layer 7 (qwerty)
 bool is_oled_enabled = true;
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
@@ -257,31 +256,21 @@ const key_override_t *key_overrides[] = {
     &key6
 };
 
-// Achordion setup
-uint16_t achordion_timeout(uint16_t tap_hold_keycode) {
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
+                      uint16_t other_keycode, keyrecord_t *other_record) {
     switch (tap_hold_keycode) {
         case LT(2, KC_BSPC):
         case LT(3, KC_SPC):
         case LT(4, KC_ESC):
         case LT(5, KC_LGUI):
-            return 0;
-    }
-
-    return 800;
-}
-
-bool achordion_chord(uint16_t tap_hold_keycode,
-                     keyrecord_t *tap_hold_record,
-                     uint16_t other_keycode,
-                     keyrecord_t *other_record) {
-    switch (tap_hold_keycode) {
+            return true;
         case LALT_T(KC_R):
         case LALT_T(KC_S):
             if (other_keycode == KC_TAB) return true;
             break;
     }
 
-    return achordion_opposite_hands(tap_hold_record, other_record);
+    return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
 static void render_luna(int LUNA_X, int LUNA_Y) {
@@ -572,13 +561,5 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             break;
     }
 
-    if (!process_achordion(keycode, record)) {
-        return false;
-    }
-
     return true;
-}
-
-void matrix_scan_user(void) {
-    achordion_task();
 }

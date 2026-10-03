@@ -3,7 +3,6 @@
 
 #include QMK_KEYBOARD_H
 #include <stdlib.h>
-#include "features/achordion.h"
 #include "transactions.h"
 
 #define ____ KC_TRNS
@@ -176,28 +175,21 @@ const key_override_t key6 = ko_make_with_layers(MOD_MASK_SHIFT, LSFT(KC_3), LSFT
 
 const key_override_t *key_overrides[] = (const key_override_t *[]){&key1, &key2, &key3, &key4, &key5, &key6, NULL};
 
-// Achordion setup
-uint16_t achordion_timeout(uint16_t tap_hold_keycode) {
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
+                      uint16_t other_keycode, keyrecord_t *other_record) {
     switch (tap_hold_keycode) {
         case LT(2, KC_BSPC):
         case LT(3, KC_SPC):
         case LT(4, KC_ESC):
         case LT(5, KC_LGUI):
-            return 0;
-    }
-
-    return 800;
-}
-
-bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record, uint16_t other_keycode, keyrecord_t *other_record) {
-    switch (tap_hold_keycode) {
+            return true;
         case LALT_T(KC_R):
         case LALT_T(KC_S):
             if (other_keycode == KC_TAB) return true;
             break;
     }
 
-    return achordion_opposite_hands(tap_hold_record, other_record);
+    return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
 static bool socd_enabled = true;
@@ -567,13 +559,5 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
     if (process_socd_key(keycode, record)) return false;
 
-    if (!process_achordion(keycode, record)) {
-        return false;
-    }
-
     return true;
-}
-
-void matrix_scan_user(void) {
-    achordion_task();
 }

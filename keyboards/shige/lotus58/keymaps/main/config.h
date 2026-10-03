@@ -16,9 +16,6 @@
 #define LAYER_STATE_16BIT
 #define DYNAMIC_KEYMAP_LAYER_COUNT 16
 
-// Homerow mod
-#define TAPPING_TERM 180
-
 // RGB Matrix effects
 #define RGB_MATRIX_KEYPRESSES
 
