@@ -8,16 +8,8 @@
 #undef LOCKING_RESYNC_ENABLE
 
 // Setting up split keyboard
-#define SPLIT_HAND_PIN B5
-#define SPLIT_LAYER_STATE_ENABLE
-#define SPLIT_LED_STATE_ENABLE
-
-// OLED on slave side
-#undef SPLIT_OLED_ENABLE
-#define SPLIT_ACTIVITY_ENABLE
 #define OLED_TIMEOUT 0
 #define OLED_BRIGHTNESS 150
-#define SPLIT_WPM_ENABLE
 #define SPLIT_TRANSACTION_IDS_USER USER_SYNC_A
 
 // Layer count

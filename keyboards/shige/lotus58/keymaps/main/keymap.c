@@ -81,9 +81,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
     [5] = LAYOUT(
     ____, ____, ____, ____, ____, ____, ____,        ____, ____, ____, ____, ____, ____, ____,
-	____, ____, ____, ____, ____, ____,                    ____, ____, RGB_MODE_FORWARD, RGB_MODE_REVERSE, ____, ____,
-	____, ____, ____, ____, ____, ____,                    ____, RGB_SPI, RGB_VAI, RGB_VAD, RGB_SPD, RGB_TOG,
-	____, ____, ____, ____, ____, ____, ____,        ____, ____, RGB_HUI, RGB_SAI, RGB_SAD, RGB_HUD, ____,
+	____, ____, ____, ____, ____, ____,                    ____, ____, RM_NEXT, RM_PREV, ____, ____,
+	____, ____, ____, ____, ____, ____,                    ____, RM_SPDU, RM_VALU, RM_VALD, RM_SPDD, RM_TOGG,
+	____, ____, ____, ____, ____, ____, ____,        ____, ____, RM_HUEU, RM_SATU, RM_SATD, RM_HUED, ____,
 					  ____, ____, ____, ____,      	 ____, ____, ____, ____
     ),
 
@@ -248,14 +248,13 @@ const key_override_t key4 = ko_make_with_layers(MOD_MASK_SHIFT, LSFT(KC_4), KC_R
 const key_override_t key5 = ko_make_with_layers(MOD_MASK_SHIFT, LSFT(KC_8), KC_BSLS, 4);
 const key_override_t key6 = ko_make_with_layers(MOD_MASK_SHIFT, LSFT(KC_3), LSFT(KC_2), 4);
 
-const key_override_t **key_overrides = (const key_override_t *[]){
+const key_override_t *key_overrides[] = {
     &key1,
     &key2,
     &key3,
     &key4,
     &key5,
-    &key6,
-    NULL
+    &key6
 };
 
 // Achordion setup

@@ -15,7 +15,7 @@
 #define ANIM_FRAME_DURATION 200 // how long each frame lasts in ms
 #define ANIM_SIZE 96            // number of bytes in array. If you change sprites, minimize for adequate firmware size. max is 1024
 //
-enum my_keycodes { SWITCH_COLEMAK = SAFE_RANGE };
+enum my_keycodes { SWITCH_COLEMAK = QK_USER_0, SOCD_TOGGLE };
 
 typedef struct _custom_sync_t {
     bool isJumping;
@@ -50,7 +50,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
     [4] = LAYOUT(____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, LSFT(KC_8), KC_7, KC_8, KC_9, LSFT(KC_SCLN), ____, ____, ____, ____, ____, ____, ____, LSFT(KC_EQL), KC_4, KC_5, KC_6, KC_MINS, ____, ____, ____, ____, ____, ____, ____, ____, ____, LSFT(KC_8), KC_1, KC_2, KC_3, KC_SLSH, ____, ____, ____, ____, ____, KC_DOT, KC_0, KC_COMMA, KC_EQL),
 
-    [5] = LAYOUT(____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, RGB_MODE_FORWARD, RGB_MODE_REVERSE, ____, ____, ____, ____, ____, ____, ____, ____, ____, RGB_SPI, RGB_VAI, RGB_VAD, RGB_SPD, RGB_TOG, ____, ____, ____, ____, ____, ____, ____, ____, ____, RGB_HUI, RGB_SAI, RGB_SAD, RGB_HUD, ____, ____, ____, ____, ____, ____, ____, ____, ____),
+    [5] = LAYOUT(____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, RM_NEXT, RM_PREV, ____, ____, ____, ____, ____, ____, ____, ____, ____, RM_SPDU, RM_VALU, RM_VALD, RM_SPDD, RM_TOGG, ____, ____, ____, ____, ____, ____, ____, ____, ____, RM_HUEU, RM_SATU, RM_SATD, RM_HUED, ____, ____, ____, ____, ____, ____, ____, ____, ____),
 
     [6] = LAYOUT(KC_ESC, KC_1, KC_2, KC_3, KC_4, KC_5, ____, ____, KC_6, KC_7, KC_8, KC_9, KC_0, ____, KC_DEL, KC_TAB, KC_Q, KC_W, KC_E, KC_R, KC_Y, KC_U, KC_I, KC_O, KC_P, ____, KC_T, KC_LSFT, KC_A, KC_S, KC_D, KC_F, KC_H, KC_J, KC_K, KC_L, KC_SCLN, ____, KC_B, KC_LCTL, KC_Z, KC_X, KC_C, KC_V, KC_G, TG(6), KC_N, KC_M, KC_COMMA, KC_DOT, KC_SLSH, ____, KC_B, KC_LALT, KC_SPC, KC_LCTL, KC_ENT, ____, ____, ____),
 
@@ -200,13 +200,70 @@ bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record, ui
     return achordion_opposite_hands(tap_hold_record, other_record);
 }
 
-// Key cancellation setup
-const key_interrupt_t PROGMEM key_interrupt_list[] = {
-    [0] = {KC_D, KC_A},
-    [1] = {KC_A, KC_D},
-    [2] = {KC_W, KC_S},
-    [3] = {KC_S, KC_W},
-};
+static bool socd_enabled = true;
+static bool socd_held[2][2];
+static uint8_t socd_last[2];
+static int8_t socd_active[2] = {-1, -1};
+
+static bool process_socd_key(uint16_t keycode, keyrecord_t *record) {
+    static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        for (uint8_t side = 0; side < 2; side++) {
+            if (keycode != pairs[pair][side]) continue;
+            socd_held[pair][side] = record->event.pressed;
+            if (record->event.pressed) socd_last[pair] = side;
+            if (!socd_enabled) return false;
+
+            int8_t next_active = -1;
+            if (socd_held[pair][0] && socd_held[pair][1]) {
+                next_active = socd_last[pair];
+            } else if (socd_held[pair][0]) {
+                next_active = 0;
+            } else if (socd_held[pair][1]) {
+                next_active = 1;
+            }
+
+            if (next_active != socd_active[pair]) {
+                if (socd_active[pair] >= 0) unregister_code16(pairs[pair][socd_active[pair]]);
+                if (next_active >= 0) register_code16(pairs[pair][next_active]);
+                socd_active[pair] = next_active;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static void set_socd_enabled(bool enabled) {
+    static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
+    if (socd_enabled == enabled) return;
+
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        if (socd_active[pair] >= 0) {
+            unregister_code16(pairs[pair][socd_active[pair]]);
+            socd_active[pair] = -1;
+        }
+        for (uint8_t side = 0; side < 2; side++) {
+            if (socd_held[pair][side]) unregister_code16(pairs[pair][side]);
+        }
+    }
+
+    socd_enabled = enabled;
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        if (socd_enabled) {
+            int8_t active = -1;
+            if (socd_held[pair][0] && socd_held[pair][1]) active = socd_last[pair];
+            else if (socd_held[pair][0]) active = 0;
+            else if (socd_held[pair][1]) active = 1;
+            if (active >= 0) register_code16(pairs[pair][active]);
+            socd_active[pair] = active;
+        } else {
+            for (uint8_t side = 0; side < 2; side++) {
+                if (socd_held[pair][side]) register_code16(pairs[pair][side]);
+            }
+        }
+    }
+}
 
 // Doggy animation setup
 static void render_luna(int LUNA_X, int LUNA_Y) {
@@ -439,12 +496,10 @@ void user_sync_a_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t o
 }
 
 void keyboard_post_init_user(void) {
-    key_interrupt_recovery_enable();
-
     custom_sync_status.isJumping        = false;
     custom_sync_status.showedJump       = true;
     custom_sync_status.isSneaking       = false;
-    custom_sync_status.isSnapTapEnabled = key_interrupt_is_enabled();
+    custom_sync_status.isSnapTapEnabled = socd_enabled;
 
     transaction_register_rpc(USER_SYNC_A, user_sync_a_slave_handler);
 }
@@ -501,13 +556,16 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 }
             }
             break;
-        case KI_TOGG:
+        case SOCD_TOGGLE:
             if (record->event.pressed) {
-                custom_sync_status.isSnapTapEnabled = !custom_sync_status.isSnapTapEnabled;
+                set_socd_enabled(!socd_enabled);
+                custom_sync_status.isSnapTapEnabled = socd_enabled;
                 isSynced                            = false;
             }
             break;
     }
+
+    if (process_socd_key(keycode, record)) return false;
 
     if (!process_achordion(keycode, record)) {
         return false;

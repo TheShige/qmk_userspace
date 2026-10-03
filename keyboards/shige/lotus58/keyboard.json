@@ -2,8 +2,8 @@
     "manufacturer": "TheShige",
     "keyboard_name": "Lotus58",
     "maintainer": "TheShige",
-    "development_board": "promicro_rp2040",
-    "pin_compatible": "promicro",
+    "url": "https://lectronz.com/stores/tweetys-wild-thinking",
+    "development_board": "promicro",
     "bootloader_instructions": "Short marked pads on PCB, or hold top-outer key when plugging in each hand.",
     "build": {
         "lto": true
@@ -16,8 +16,6 @@
     },
     "features": {
         "bootmagic": true,
-        "command": false,
-        "console": false,
         "extrakey": true,
         "mousekey": false,
         "nkro": true,
@@ -26,6 +24,11 @@
         "rgb_matrix": true,
         "rgblight": false,
         "split": true
+    },
+    "host": {
+        "default": {
+            "nkro": true
+        }
     },
     "matrix_pins": {
         "cols": ["B1", "B2", "B3", "B6", "F7", "F6"],
@@ -46,6 +49,9 @@
         "bootmagic": {
             "matrix": [5, 0]
         },
+        "handedness": {
+            "pin": "B5"
+        },
         "enabled": true,
         "encoder": {
             "right": {
@@ -54,11 +60,19 @@
                 ]
             }
         },
-        "soft_serial_pin": "D2",
+        "serial": {
+            "pin": "D2"
+        },
         "transport": {
             "protocol": "serial",
-            "sync_matrix_state": true,
-            "sync_modifiers": true
+            "sync": {
+                "activity": true,
+                "layer_state": true,
+                "indicators": true,
+                "matrix_state": true,
+                "modifiers": true,
+                "wpm": true
+            }
         },
         "usb_detect": {
             "enabled": false
@@ -68,7 +82,6 @@
         "vid": "0x6776",
         "pid": "0x2192",
         "device_version": "1.2.3",
-        "force_nkro": true,
         "polling_interval": 1
     },
     "layouts": {
