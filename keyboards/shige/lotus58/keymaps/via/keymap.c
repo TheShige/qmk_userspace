@@ -14,13 +14,45 @@
 #define ANIM_FRAME_DURATION 200 // how long each frame lasts in ms
 #define ANIM_SIZE 96            // number of bytes in array. If you change sprites, minimize for adequate firmware size. max is 1024
 //
-enum my_keycodes { SWITCH_COLEMAK = QK_USER_0, SOCD_TOGGLE };
+enum my_keycodes {
+    SOCD_TOGGLE = QK_KB_0,
+    OS_MODE_TOGGLE,
+    SWITCH_COLEMAK,
+    OS_SHORTCUT_A,
+    OS_SHORTCUT_B,
+    OS_SHORTCUT_C,
+    OS_SHORTCUT_D,
+    OS_SHORTCUT_E,
+    OS_SHORTCUT_F,
+    OS_SHORTCUT_G,
+    OS_SHORTCUT_H,
+    OS_SHORTCUT_I,
+    OS_SHORTCUT_J,
+    OS_SHORTCUT_K,
+    OS_SHORTCUT_L,
+    OS_SHORTCUT_M,
+    OS_SHORTCUT_N,
+    OS_SHORTCUT_O,
+    OS_SHORTCUT_P,
+    OS_SHORTCUT_Q,
+    OS_SHORTCUT_R,
+    OS_SHORTCUT_S,
+    OS_SHORTCUT_T,
+    OS_SHORTCUT_U,
+    OS_SHORTCUT_V,
+    OS_SHORTCUT_W,
+    OS_SHORTCUT_X,
+    OS_SHORTCUT_Y,
+    OS_SHORTCUT_Z,
+};
 
 typedef struct _custom_sync_t {
     bool isJumping;
     bool showedJump;
     bool isSneaking;
     bool isSnapTapEnabled;
+    bool isMacOS;
+    uint8_t lastLayer;
 } custom_sync_t;
 
 bool isSynced = true; // are the two halves are synced
@@ -33,7 +65,7 @@ int           current_wpm = 0;
 led_t         led_usb_state;
 custom_sync_t custom_sync_status;
 
-int  lastLayer       = 0; // last layer before "SWITCH_COLEMAK" is pressed
+int  lastLayer       = 6; // last layer before "SWITCH_COLEMAK" is pressed
 int  currentLayer    = 0; // current layer
 bool is_oled_enabled = true;
 
@@ -175,8 +207,7 @@ const key_override_t key6 = ko_make_with_layers(MOD_MASK_SHIFT, LSFT(KC_3), LSFT
 
 const key_override_t *key_overrides[] = (const key_override_t *[]){&key1, &key2, &key3, &key4, &key5, &key6, NULL};
 
-bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
-                      uint16_t other_keycode, keyrecord_t *other_record) {
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record, uint16_t other_keycode, keyrecord_t *other_record) {
     switch (tap_hold_keycode) {
         case LT(2, KC_BSPC):
         case LT(3, KC_SPC):
@@ -192,10 +223,36 @@ bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
     return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
-static bool socd_enabled = true;
-static bool socd_held[2][2];
+bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
+    switch (keycode) {
+        case LT(2, KC_BSPC):
+            return true;
+        default:
+            return false;
+    }
+
+    return keycode == LT(3, KC_SPC);
+}
+
+uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
+    (void)record;
+    switch (keycode) {
+        case LCTL_T(KC_S):
+        case LSFT_T(KC_T):
+        case RSFT_T(KC_N):
+        case RCTL_T(KC_E):
+            return TAPPING_TERM - 70;
+        default:
+            return TAPPING_TERM;
+    }
+}
+
+static bool    socd_enabled = true;
+static bool    is_macos;
+static bool    shortcut_macos[26];
+static bool    socd_held[2][2];
 static uint8_t socd_last[2];
-static int8_t socd_active[2] = {-1, -1};
+static int8_t  socd_active[2] = {-1, -1};
 
 static bool process_socd_key(uint16_t keycode, keyrecord_t *record) {
     static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
@@ -244,9 +301,12 @@ static void set_socd_enabled(bool enabled) {
     for (uint8_t pair = 0; pair < 2; pair++) {
         if (socd_enabled) {
             int8_t active = -1;
-            if (socd_held[pair][0] && socd_held[pair][1]) active = socd_last[pair];
-            else if (socd_held[pair][0]) active = 0;
-            else if (socd_held[pair][1]) active = 1;
+            if (socd_held[pair][0] && socd_held[pair][1])
+                active = socd_last[pair];
+            else if (socd_held[pair][0])
+                active = 0;
+            else if (socd_held[pair][1])
+                active = 1;
             if (active >= 0) register_code16(pairs[pair][active]);
             socd_active[pair] = active;
         } else {
@@ -434,7 +494,8 @@ static void print_status_narrow(void) {
             oled_write_P(PSTR("     "), false);
     }
 
-    oled_write_P(PSTR("\nSTap "), custom_sync_status.isSnapTapEnabled);
+    oled_write_P(PSTR("\nS"), custom_sync_status.isSnapTapEnabled);
+    oled_write_P(PSTR("M"), custom_sync_status.isMacOS);
 
     /* wpm counter */
     uint8_t n = current_wpm;
@@ -485,6 +546,11 @@ void user_sync_a_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t o
     custom_sync_status.showedJump       = m2s->showedJump;
     custom_sync_status.isSneaking       = m2s->isSneaking;
     custom_sync_status.isSnapTapEnabled = m2s->isSnapTapEnabled;
+    custom_sync_status.isMacOS          = m2s->isMacOS;
+    custom_sync_status.lastLayer        = m2s->lastLayer;
+    socd_enabled                         = m2s->isSnapTapEnabled;
+    is_macos                             = m2s->isMacOS;
+    lastLayer                            = m2s->lastLayer;
 }
 
 void keyboard_post_init_user(void) {
@@ -492,6 +558,9 @@ void keyboard_post_init_user(void) {
     custom_sync_status.showedJump       = true;
     custom_sync_status.isSneaking       = false;
     custom_sync_status.isSnapTapEnabled = socd_enabled;
+    custom_sync_status.isMacOS          = is_macos;
+    custom_sync_status.lastLayer        = lastLayer;
+    isSynced                            = false;
 
     transaction_register_rpc(USER_SYNC_A, user_sync_a_slave_handler);
 }
@@ -541,6 +610,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             if (record->event.pressed) {
                 if (currentLayer != 0) {
                     lastLayer = currentLayer;
+                    custom_sync_status.lastLayer = lastLayer;
+                    isSynced = false;
                     layer_clear();
                     layer_on(0);
                 } else if (lastLayer != 0) {
@@ -555,6 +626,26 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 isSynced                            = false;
             }
             break;
+        case OS_MODE_TOGGLE:
+            if (record->event.pressed) {
+                is_macos = !is_macos;
+                custom_sync_status.isMacOS = is_macos;
+                isSynced = false;
+            }
+            return false;
+        case OS_SHORTCUT_A ... OS_SHORTCUT_Z: {
+            uint16_t letter = KC_A + (keycode - OS_SHORTCUT_A);
+            uint16_t shortcut;
+            if (record->event.pressed) {
+                shortcut_macos[keycode - OS_SHORTCUT_A] = is_macos;
+                shortcut = is_macos ? LGUI(letter) : LCTL(letter);
+                register_code16(shortcut);
+            } else {
+                shortcut = shortcut_macos[keycode - OS_SHORTCUT_A] ? LGUI(letter) : LCTL(letter);
+                unregister_code16(shortcut);
+            }
+            return false;
+        }
     }
 
     if (process_socd_key(keycode, record)) return false;
