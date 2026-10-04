@@ -7,17 +7,76 @@ permissions:
 
 jobs:
   build:
-    name: 'QMK Userspace Build'
-    uses: qmk/.github/.github/workflows/qmk_userspace_build.yml@main
-    with:
-      qmk_repo: qmk/qmk_firmware
-      qmk_ref: master
-      preparation_command: |
-        mkdir -p "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58"
-        ln -sfn "$GITHUB_WORKSPACE/keyboards/shige/lotus58/keyboard.json" "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58/keyboard.json"
+    name: QMK Userspace Build and Publish
+    runs-on: ubuntu-latest
+    container: ghcr.io/qmk/qmk_cli:latest
 
-  publish:
-    name: 'QMK Userspace Publish'
-    uses: qmk/.github/.github/workflows/qmk_userspace_publish.yml@main
-    if: always() && !cancelled()
-    needs: build
+    steps:
+      - name: Checkout userspace
+        uses: actions/checkout@v4
+
+      - name: Checkout QMK firmware from GitHub
+        run: git clone --depth 1 --branch master --recurse-submodules https://github.com/qmk/qmk_firmware.git "$GITHUB_WORKSPACE/qmk_firmware"
+
+      - name: Install QMK CLI dependencies
+        run: pip install -r qmk_firmware/requirements.txt
+
+      - name: Configure QMK CLI and board definition
+        run: |
+          qmk config userspace_compile.parallel=$(nproc)
+          qmk config user.qmk_home="$GITHUB_WORKSPACE/qmk_firmware"
+          qmk config user.overlay_dir="$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58"
+          ln -sfn "$GITHUB_WORKSPACE/keyboards/shige/lotus58/keyboard.json" "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58/keyboard.json"
+
+      - name: Validate userspace
+        run: qmk userspace-doctor
+
+      - name: Build firmware
+        run: |
+          if qmk userspace-compile --help | grep -q "print-failures"; then
+            EXTRA_ARGS="-p"
+          fi
+          qmk userspace-compile -e DUMP_CI_METADATA=yes $EXTRA_ARGS
+
+      - name: Publish latest firmware release
+        env:
+          RELEASE_TOKEN: ${{ github.token }}
+        run: |
+          release_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/latest"
+          release_status=$(curl -sS -o /tmp/latest-release.json -w '%{http_code}' \
+            -H "Authorization: token $RELEASE_TOKEN" "$release_url")
+          if [ "$release_status" = 200 ]; then
+            release_id=$(python -c 'import json; print(json.load(open("/tmp/latest-release.json"))["id"])')
+            curl --fail-with-body -sS -X DELETE \
+              -H "Authorization: token $RELEASE_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/$release_id"
+          elif [ "$release_status" != 404 ]; then
+            cat /tmp/latest-release.json
+            exit 1
+          fi
+
+          curl -sS -X DELETE -H "Authorization: token $RELEASE_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs/tags/latest" || true
+          release_id=$(curl --fail-with-body -sS -X POST \
+            -H "Authorization: token $RELEASE_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "{\"tag_name\":\"latest\",\"target_commitish\":\"$GITHUB_SHA\",\"name\":\"Latest QMK Firmware\"}" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases" \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+          for asset in *.hex *.bin *.uf2; do
+            [ -f "$asset" ] || continue
+            if [ "$GITHUB_API_URL" = "https://api.github.com" ]; then
+              curl --fail-with-body -sS -X POST \
+                -H "Authorization: token $RELEASE_TOKEN" \
+                -H 'Content-Type: application/octet-stream' \
+                --data-binary "@$asset" \
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$asset"
+            else
+              curl --fail-with-body -sS -X POST \
+                -H "Authorization: token $RELEASE_TOKEN" \
+                -F "attachment=@$asset" \
+                "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$asset"
+            fi
+          done

@@ -27,6 +27,12 @@ This is a template repository which allows for an external set of QMK keymaps to
 1. Wait for the actions run to complete
 1. Inspect the Releases tab on your repository for the latest firmware build
 
+## Howto build with Gitea Actions
+
+Gitea can run the workflow in `.github/workflows/build_binaries.yaml` as well. Enable Actions for the repository and assign it a runner. The workflow clones upstream `qmk/qmk_firmware`, links this userspace's Lotus58 `keyboard.json` into the firmware checkout, builds the targets in `qmk.json`, and publishes the `latest` release on the host that ran it.
+
+The workflow uses Gitea's built-in job token to publish releases. Its `contents: write` permission must be allowed by the repository or owner Actions settings.
+
 ## Howto build locally
 
 1. Run the normal `qmk setup` procedure if you haven't already done so -- see [QMK Docs](https://docs.qmk.fm/#/newbs) for details.
