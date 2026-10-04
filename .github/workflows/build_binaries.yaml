@@ -12,6 +12,9 @@ jobs:
     with:
       qmk_repo: qmk/qmk_firmware
       qmk_ref: master
+      preparation_command: |
+        mkdir -p "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58"
+        ln -sfn "$GITHUB_WORKSPACE/keyboards/shige/lotus58/keyboard.json" "$GITHUB_WORKSPACE/qmk_firmware/keyboards/shige/lotus58/keyboard.json"
 
   publish:
     name: 'QMK Userspace Publish'
