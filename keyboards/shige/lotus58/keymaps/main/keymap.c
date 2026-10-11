@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include QMK_KEYBOARD_H
+#include "eeconfig.h"
 #include <stdlib.h>
 #include "transactions.h"
 
@@ -14,12 +15,18 @@
 #define ANIM_FRAME_DURATION 200 // how long each frame lasts in ms
 #define ANIM_SIZE 96            // number of bytes in array. If you change sprites, minimize for adequate firmware size. max is 1024
 //
-enum my_keycodes { SWITCH_COLEMAK = SAFE_RANGE };
+enum my_keycodes {
+    SOCD_TOGGLE = SAFE_RANGE,
+    OS_MODE_TOGGLE,
+    SWITCH_COLEMAK,
+};
 
 typedef struct _sync_luna_status_t {
     bool isJumping;
     bool showedJump;
     bool isSneaking;
+    bool socd_enabled;
+    bool is_macos;
 } sync_luna_status_t;
 
 bool isSynced = true; // are the two halves are synced
@@ -35,6 +42,101 @@ sync_luna_status_t luna_status;
 int currentLayer = 0; // current layer
 int lastLayer = 7; // last layer before "SWITCH_COLEMAK" is pressed; default set to layer 7 (qwerty)
 bool is_oled_enabled = true;
+
+static bool socd_enabled;
+static bool is_macos;
+static bool settings_dirty;
+static bool socd_held[2][2];
+static uint8_t socd_last[2];
+static int8_t socd_active[2] = {-1, -1};
+
+#define USER_SETTINGS_SOCD_ENABLED (1UL << 0)
+#define USER_SETTINGS_MACOS_ENABLED (1UL << 1)
+#define USER_SETTINGS_MASK (USER_SETTINGS_SOCD_ENABLED | USER_SETTINGS_MACOS_ENABLED)
+
+static void save_settings_to_eeprom(void) {
+    uint32_t current = eeconfig_read_user();
+    uint32_t updated = current & ~USER_SETTINGS_MASK;
+
+    if (socd_enabled) updated |= USER_SETTINGS_SOCD_ENABLED;
+    if (is_macos) updated |= USER_SETTINGS_MACOS_ENABLED;
+
+    if (updated != current) eeconfig_update_user(updated);
+}
+
+static void load_settings_from_eeprom(void) {
+    uint32_t saved = eeconfig_read_user();
+
+    socd_enabled = saved & USER_SETTINGS_SOCD_ENABLED;
+    is_macos     = saved & USER_SETTINGS_MACOS_ENABLED;
+}
+
+static void set_socd_enabled(bool enabled) {
+    static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
+    if (socd_enabled == enabled) return;
+
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        if (socd_active[pair] >= 0) {
+            unregister_code16(pairs[pair][socd_active[pair]]);
+            socd_active[pair] = -1;
+        }
+        if (!enabled) {
+            for (uint8_t side = 0; side < 2; side++) {
+                if (socd_held[pair][side]) unregister_code16(pairs[pair][side]);
+            }
+        }
+    }
+
+    socd_enabled = enabled;
+    settings_dirty = true;
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        if (enabled) {
+            int8_t active = -1;
+            if (socd_held[pair][0] && socd_held[pair][1]) active = socd_last[pair];
+            else if (socd_held[pair][0]) active = 0;
+            else if (socd_held[pair][1]) active = 1;
+            socd_active[pair] = active;
+            if (active >= 0) register_code16(pairs[pair][active]);
+        } else {
+            socd_active[pair] = -1;
+            for (uint8_t side = 0; side < 2; side++) {
+                if (socd_held[pair][side]) register_code16(pairs[pair][side]);
+            }
+        }
+    }
+}
+
+static void set_macos_enabled(bool enabled) {
+    if (is_macos == enabled) return;
+    is_macos = enabled;
+    settings_dirty = true;
+}
+
+static bool process_socd_key(uint16_t keycode, keyrecord_t *record) {
+    static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
+    for (uint8_t pair = 0; pair < 2; pair++) {
+        for (uint8_t side = 0; side < 2; side++) {
+            if (keycode != pairs[pair][side]) continue;
+
+            socd_held[pair][side] = record->event.pressed;
+            if (record->event.pressed) socd_last[pair] = side;
+            if (!socd_enabled) return false;
+
+            int8_t next_active = -1;
+            if (socd_held[pair][0] && socd_held[pair][1]) next_active = socd_last[pair];
+            else if (socd_held[pair][0]) next_active = 0;
+            else if (socd_held[pair][1]) next_active = 1;
+
+            if (next_active != socd_active[pair]) {
+                if (socd_active[pair] >= 0) unregister_code16(pairs[pair][socd_active[pair]]);
+                socd_active[pair] = next_active;
+                if (next_active >= 0) register_code16(pairs[pair][next_active]);
+            }
+            return true;
+        }
+    }
+    return false;
+}
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
@@ -79,7 +181,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     ),
 
     [5] = LAYOUT(
-    ____, ____, ____, ____, ____, ____, ____,        ____, ____, ____, ____, ____, ____, ____,
+    SOCD_TOGGLE, OS_MODE_TOGGLE, ____, ____, ____, ____, ____,        ____, ____, ____, ____, ____, ____, ____,
 	____, ____, ____, ____, ____, ____,                    ____, ____, RM_NEXT, RM_PREV, ____, ____,
 	____, ____, ____, ____, ____, ____,                    ____, RM_SPDU, RM_VALU, RM_VALD, RM_SPDD, RM_TOGG,
 	____, ____, ____, ____, ____, ____, ____,        ____, ____, RM_HUEU, RM_SATU, RM_SATD, RM_HUED, ____,
@@ -515,12 +617,19 @@ void user_sync_a_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t o
     luna_status.isJumping = m2s->isJumping;
     luna_status.showedJump = m2s->showedJump;
     luna_status.isSneaking = m2s->isSneaking;
+    set_socd_enabled(m2s->socd_enabled);
+    set_macos_enabled(m2s->is_macos);
 }
 
 void keyboard_post_init_user(void) {
+    load_settings_from_eeprom();
+    settings_dirty = false;
+
     luna_status.isJumping = false;
     luna_status.showedJump = true;
     luna_status.isSneaking = false;
+    luna_status.socd_enabled = socd_enabled;
+    luna_status.is_macos = is_macos;
 
     transaction_register_rpc(USER_SYNC_A, user_sync_a_slave_handler);
 }
@@ -528,6 +637,10 @@ void keyboard_post_init_user(void) {
 void housekeeping_task_user(void) {
     currentLayer = get_highest_layer(layer_state);
     is_oled_enabled = (bool)(last_input_activity_elapsed() < 60000);
+    if (settings_dirty) {
+        save_settings_to_eeprom();
+        settings_dirty = false;
+    }
     if (is_keyboard_master()) {
         if (!isSynced) {
             if (transaction_rpc_send(USER_SYNC_A, sizeof(luna_status), &luna_status)) {
@@ -576,7 +689,23 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 }
             }
             break;
+        case SOCD_TOGGLE:
+            if (record->event.pressed) {
+                set_socd_enabled(!socd_enabled);
+                luna_status.socd_enabled = socd_enabled;
+                isSynced = false;
+            }
+            return false;
+        case OS_MODE_TOGGLE:
+            if (record->event.pressed) {
+                set_macos_enabled(!is_macos);
+                luna_status.is_macos = is_macos;
+                isSynced = false;
+            }
+            return false;
     }
+
+    if (process_socd_key(keycode, record)) return false;
 
     return true;
 }

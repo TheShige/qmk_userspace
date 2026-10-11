@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include QMK_KEYBOARD_H
+#include "eeconfig.h"
 #include <stdlib.h>
 #include "transactions.h"
 
@@ -327,12 +328,34 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     }
 }
 
-static bool    socd_enabled = true;
+static bool    socd_enabled;
 static bool    is_macos;
+static bool    settings_dirty;
 static bool    shortcut_macos[26];
 static bool    socd_held[2][2];
 static uint8_t socd_last[2];
 static int8_t  socd_active[2] = {-1, -1};
+
+#define USER_SETTINGS_SOCD_ENABLED (1UL << 0)
+#define USER_SETTINGS_MACOS_ENABLED (1UL << 1)
+#define USER_SETTINGS_MASK (USER_SETTINGS_SOCD_ENABLED | USER_SETTINGS_MACOS_ENABLED)
+
+static void save_settings_to_eeprom(void) {
+    uint32_t current = eeconfig_read_user();
+    uint32_t updated = current & ~USER_SETTINGS_MASK;
+
+    if (socd_enabled) updated |= USER_SETTINGS_SOCD_ENABLED;
+    if (is_macos) updated |= USER_SETTINGS_MACOS_ENABLED;
+
+    if (updated != current) eeconfig_update_user(updated);
+}
+
+static void load_settings_from_eeprom(void) {
+    uint32_t saved = eeconfig_read_user();
+
+    socd_enabled = saved & USER_SETTINGS_SOCD_ENABLED;
+    is_macos     = saved & USER_SETTINGS_MACOS_ENABLED;
+}
 
 static bool process_socd_key(uint16_t keycode, keyrecord_t *record) {
     static const uint16_t pairs[2][2] = {{KC_A, KC_D}, {KC_W, KC_S}};
@@ -378,6 +401,7 @@ static void set_socd_enabled(bool enabled) {
     }
 
     socd_enabled = enabled;
+    settings_dirty = true;
     for (uint8_t pair = 0; pair < 2; pair++) {
         if (socd_enabled) {
             int8_t active = -1;
@@ -395,6 +419,13 @@ static void set_socd_enabled(bool enabled) {
             }
         }
     }
+}
+
+static void set_macos_enabled(bool enabled) {
+    if (is_macos == enabled) return;
+
+    is_macos = enabled;
+    settings_dirty = true;
 }
 
 // Doggy animation setup
@@ -628,12 +659,15 @@ void user_sync_a_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t o
     custom_sync_status.isSnapTapEnabled = m2s->isSnapTapEnabled;
     custom_sync_status.isMacOS          = m2s->isMacOS;
     custom_sync_status.lastLayer        = m2s->lastLayer;
-    socd_enabled                         = m2s->isSnapTapEnabled;
-    is_macos                             = m2s->isMacOS;
+    set_socd_enabled(m2s->isSnapTapEnabled);
+    set_macos_enabled(m2s->isMacOS);
     lastLayer                            = m2s->lastLayer;
 }
 
 void keyboard_post_init_user(void) {
+    load_settings_from_eeprom();
+    settings_dirty = false;
+
     custom_sync_status.isJumping        = false;
     custom_sync_status.showedJump       = true;
     custom_sync_status.isSneaking       = false;
@@ -648,6 +682,12 @@ void keyboard_post_init_user(void) {
 void housekeeping_task_user(void) {
     currentLayer = get_highest_layer(layer_state);
     is_oled_enabled = (bool)(last_input_activity_elapsed() < 60000);
+
+    if (settings_dirty) {
+        save_settings_to_eeprom();
+        settings_dirty = false;
+    }
+
     if (is_keyboard_master()) {
         if (!isSynced) {
             if (transaction_rpc_send(USER_SYNC_A, sizeof(custom_sync_status), &custom_sync_status)) {
@@ -707,7 +747,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             break;
         case OS_MODE_TOGGLE:
             if (record->event.pressed) {
-                is_macos = !is_macos;
+                set_macos_enabled(!is_macos);
                 custom_sync_status.isMacOS = is_macos;
                 isSynced = false;
             }
